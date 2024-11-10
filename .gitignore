@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Terraform
+.env
+.terraform
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.backup
+*.tfvars
