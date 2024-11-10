@@ -20,3 +20,7 @@ variable "cloudrun_name" {
 variable "cloudrun_image" {
   type    = string
 }
+
+variable "host" {
+  type    = string
+}

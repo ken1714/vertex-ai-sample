@@ -33,6 +33,10 @@ resource "google_cloud_run_v2_service" "default" {
   template {
     containers {
       image = var.cloudrun_image
+      env {
+        name  = "HOST"
+        value = var.host
+      }
       ports {
         container_port = 3000
       }
