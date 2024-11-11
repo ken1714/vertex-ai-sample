@@ -1,8 +1,8 @@
 version: '3'
 services:
-  client:
+  frontend:
     build:
-      context: .
+      context: ./frontend
     image: gcr.io/${PROJECT_ID}/vertex-ai-sample
     container_name: vertex-ai-sample
     ports:
