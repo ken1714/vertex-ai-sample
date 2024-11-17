@@ -6,6 +6,7 @@ import {
 } from '@google-cloud/vertexai';
 import bodyParser from 'body-parser';
 import * as dotenv from 'dotenv';
+import cors from 'cors'
 
 dotenv.config();
 
@@ -41,17 +42,15 @@ export const generateContent = async (inputText: string): Promise<string> => {
 
 const app = express();
 
-app.use((_req: express.Request, res: express.Response, next: express.NextFunction) => {
-  res.header("Access-Control-Allow-Origin", process.env.FRONTEND_URL);
-  res.header("Access-Control-Allow-Methods", "*")
-  res.header("Access-Control-Allow-Headers", "*");
+app.use((_req: express.Request, _res: express.Response, next: express.NextFunction) => {
   next();
 });
 
 app.use(bodyParser.json());
+app.use(cors());
 
-app.post('/', async (req: any, res: any) => {
-  if (process.env.NODE_ENV = 'local') {
+app.post('/', async (req: express.Request, res: express.Response) => {
+  if (process.env.NODE_ENV === 'local') {
     res.send({ message: req.body.input });
     return;
   }
