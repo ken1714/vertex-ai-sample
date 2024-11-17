@@ -3,7 +3,14 @@ services:
   frontend:
     build:
       context: ./frontend
-    image: gcr.io/${PROJECT_ID}/vertex-ai-sample
-    container_name: vertex-ai-sample
+    image: gcr.io/${PROJECT_ID}/vertex-ai-frontend
+    container_name: vertex-ai-frontend
     ports:
       - 4000:3000
+  backend:
+    build:
+      context: ./backend
+    image: gcr.io/${PROJECT_ID}/vertex-ai-backend
+    container_name: vertex-ai-backend
+    ports:
+      - 5000:3000
