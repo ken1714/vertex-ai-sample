@@ -10,11 +10,43 @@ import {
   Paper,
 } from '@mui/material';
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import styled from "styled-components";
+
+type GenerateContent = {
+  candidates: {
+    content: {
+      role: string;
+      parts: {
+        text: string;
+      }[];
+    };
+    finishReason: string;
+    safetyRatings: {
+      category: string;
+      probability: string;
+      probabilityScore: number;
+      severity: string;
+      severityScore: number;
+    }[];
+    avgLogprobs: number;
+    index: number;
+  }[];
+  usageMetadata: {
+    promptTokenCount: number;
+    candidatesTokenCount: number;
+    totalTokenCount: number;
+  };
+  modelVersion: string;
+};
+
+const LeftReactMarkdown = styled(ReactMarkdown)`
+  text-align: left;
+`
 
 const App = () => {
   const [inputValue, setInputValue] = useState<string>();
-  const [responseValue, setResponseValue] = useState<string>();
-
+  const [response, setResponse] = useState<GenerateContent>();
   const sendInput = async () => {
     const response = await fetch(import.meta.env.VITE_BACKEND_URL, {
       method: 'POST',
@@ -26,7 +58,7 @@ const App = () => {
       }),
     });
     const data = await response.json();
-    setResponseValue(data.message);
+    setResponse(JSON.parse(data.message));
     setInputValue('');
   };
 
@@ -80,7 +112,13 @@ const App = () => {
           />
         </Paper>
         <Paper>
-          {responseValue}
+          <LeftReactMarkdown>
+            {
+              response ? response?.candidates.map((candidate) =>
+                candidate.content.parts.map((part) => part.text).join('')
+              ).join('') : ''
+            }
+          </LeftReactMarkdown>
         </Paper>
       </Box>
     </>
