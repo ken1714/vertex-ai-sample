@@ -12,15 +12,28 @@ variable location {
   default = "ASIA-NORTHEAST1"
 }
 
-variable "cloudrun_name" {
+variable "frontend_cloudrun_name" {
   type    = string
-  default = "vertex-ai"
+  default = "vertex-ai-frontend"
 }
 
-variable "cloudrun_image" {
+variable "backend_cloudrun_name" {
+  type    = string
+  default = "vertex-ai-backend"
+}
+
+variable "frontend_cloudrun_image" {
+  type    = string
+}
+
+variable "backend_cloudrun_image" {
   type    = string
 }
 
 variable "host" {
+  type    = string
+}
+
+variable "frontend_url" {
   type    = string
 }
