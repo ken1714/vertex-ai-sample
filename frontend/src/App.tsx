@@ -11,22 +11,31 @@ import {
 } from '@mui/material';
 import { useState } from 'react';
 
-
 const App = () => {
   const [inputValue, setInputValue] = useState<string>();
   const [responseValue, setResponseValue] = useState<string>();
 
-  const sendInput = () => {
-    setResponseValue(inputValue);
+  const sendInput = async () => {
+    const response = await fetch(import.meta.env.VITE_BACKEND_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        input: inputValue,
+      }),
+    });
+    const data = await response.json();
+    setResponseValue(data.message);
     setInputValue('');
   };
 
-  const handleKeyDown = (event) => {
+  const handleKeyDown = async (event) => {
     if (event.key === 'Enter') {
       if (event.shiftKey) {
         setInputValue(inputValue + '\n');
       } else {
-        sendInput();
+        await sendInput();
       }
     }
   };
@@ -35,8 +44,8 @@ const App = () => {
     setInputValue(event.target.value);
   };
 
-  const handleSubmit = (event) => {
-    sendInput();
+  const handleSubmit = async (event) => {
+    await sendInput();
     event.preventDefault();
   };
 
