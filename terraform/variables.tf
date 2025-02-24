@@ -37,3 +37,15 @@ variable "host" {
 variable "frontend_url" {
   type    = string
 }
+
+variable "langfuse_secret_key" {
+  type    = string
+}
+
+variable "langfuse_public_key" {
+  type    = string
+}
+
+variable "langfuse_host" {
+  type    = string
+}
