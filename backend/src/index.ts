@@ -37,8 +37,7 @@ export const generateContent = async (inputText: string): Promise<string> => {
     contents: [{role: 'user', parts: [{text: inputText}]}],
   };
   const result = await generativeModel.generateContent(request);
-  const response = result.response;
-  return JSON.stringify(response);
+  return result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 };
 
 const trace = (inputText: string, responseText: string, traceName: string) => {
