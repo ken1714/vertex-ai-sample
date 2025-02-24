@@ -11,7 +11,7 @@ import { Langfuse } from 'langfuse';
 
 dotenv.config();
 
-export const generateContent = async (inputText: string): Promise<string> => {
+export const generateContent = async (context: string, inputText: string): Promise<string> => {
   const vertexAI = new VertexAI({
     project: process.env.PROJECT_ID,
     location: process.env.LOCATION
@@ -25,10 +25,7 @@ export const generateContent = async (inputText: string): Promise<string> => {
     systemInstruction: {
       role: 'system',
       parts: [{
-        "text":
-          `あなたはピープルマネジメントのエキスパートで、人間科学や組織化学の専門知識を豊富に持っています。
-          あなたの役割は1on1で話す内容が分からないマネージャーに対し、適切な打ち手を提示することです。
-          あなたはこれから、入力された悩みに対して適切にアドバイスしてください。`
+        text: context
       }]
     },
   });
@@ -42,7 +39,6 @@ export const generateContent = async (inputText: string): Promise<string> => {
 
 const trace = (inputText: string, responseText: string, traceName: string) => {
   const langfuse = new Langfuse({
-    release: 'v0.0.0',
     secretKey: process.env.LANGFUSE_SECRET_KEY,
     publicKey: process.env.LANGFUSE_PUBLIC_KEY,
     baseUrl: process.env.LANGFUSE_HOST,
@@ -77,7 +73,16 @@ app.post('/', async (req: express.Request, res: express.Response) => {
     res.send({ message: req.body.input });
     return;
   }
-  const responseText = await generateContent(req.body.input);
+  const langfuse = new Langfuse({
+    secretKey: process.env.LANGFUSE_SECRET_KEY,
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+    baseUrl: process.env.LANGFUSE_HOST,
+  });
+  const context = await langfuse.getPrompt('ピープルマネジメント変数あり');
+  const compiledContext = await context.compile({
+    input: '新米マネージャーで、ピープルマネジメントの経験は非常に浅い'
+  })
+  const responseText = await generateContent(compiledContext, req.body.input);
   trace(req.body.input, responseText, 'sample-llm');
   res.send({ message: responseText })
 });
