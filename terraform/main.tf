@@ -5,6 +5,7 @@ locals {
     "iap.googleapis.com",
     "run.googleapis.com",
     "aiplatform.googleapis.com",
+    "secretmanager.googleapis.com",
   ])
 }
 
@@ -49,6 +50,28 @@ resource "google_cloud_run_v2_service" "backend" {
         // 循環参照回避
         name  = "FRONTEND_URL"
         value = var.frontend_url
+      }
+      env {
+        name  = "LANGFUSE_SECRET_KEY"
+        value_source {
+          secret_key_ref {
+            secret = google_secret_manager_secret.langfuse_secret_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "LANGFUSE_PUBLIC_KEY"
+        value_source {
+          secret_key_ref {
+            secret = google_secret_manager_secret.langfuse_public_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "LANGFUSE_HOST"
+        value = var.langfuse_host
       }
       ports {
         container_port = 3000
@@ -101,4 +124,50 @@ resource "google_project_iam_member" "my_service_account_member" {
   project     = var.project_id
   role        = "roles/aiplatform.expressUser"
   member     = "serviceAccount:${google_service_account.default.email}"
+}
+
+resource "google_secret_manager_secret" "langfuse_secret_key" {
+  secret_id = "langfuse-secret-key"
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_version" "langfuse_secret_key" {
+  secret      = google_secret_manager_secret.langfuse_secret_key.id
+  secret_data = var.langfuse_secret_key
+}
+
+resource "google_secret_manager_secret_iam_member" "langfuse_secret_key" {
+  secret_id = google_secret_manager_secret.langfuse_secret_key.secret_id
+  role = "roles/secretmanager.secretAccessor"
+  member = "serviceAccount:${google_service_account.default.email}"
+}
+
+resource "google_secret_manager_secret" "langfuse_public_key" {
+  secret_id = "langfuse-public-key"
+
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+}
+
+resource "google_secret_manager_secret_version" "langfuse_public_key" {
+  secret      = google_secret_manager_secret.langfuse_public_key.id
+  secret_data = var.langfuse_public_key
+}
+
+resource "google_secret_manager_secret_iam_member" "langfuse_public_key" {
+  secret_id = google_secret_manager_secret.langfuse_public_key.secret_id
+  role = "roles/secretmanager.secretAccessor"
+  member = "serviceAccount:${google_service_account.default.email}"
 }
