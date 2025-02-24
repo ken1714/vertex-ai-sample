@@ -65,25 +65,6 @@ const App = () => {
     setInputValue('');
   };
 
-  const handleKeyDown = async (event) => {
-    if (event.key === 'Enter') {
-      if (event.shiftKey) {
-        setInputValue(inputValue + '\n');
-      } else {
-        await sendInput();
-      }
-    }
-  };
-
-  const handleChange = (event) => {
-    setInputValue(event.target.value);
-  };
-
-  const handleSubmit = async (event) => {
-    await sendInput();
-    event.preventDefault();
-  };
-
   return (
     <>
       <p>トレース入力サンプル</p>
@@ -91,7 +72,7 @@ const App = () => {
         <InputBase
           fullWidth
           multiline
-          value={inputValue}
+          value={traceInputValue}
           sx={{ ml: 1, flex: 1 }}
           placeholder="トレース入力サンプル"
           onChange={(event) => {
@@ -101,7 +82,7 @@ const App = () => {
         <InputBase
           fullWidth
           multiline
-          value={inputValue}
+          value={traceResponseValue}
           sx={{ ml: 1, flex: 1 }}
           placeholder="トレース出力サンプル"
           onChange={(event) => {
@@ -134,7 +115,10 @@ const App = () => {
       >
         <Paper
           component="form"
-          onSubmit={handleSubmit}
+          onSubmit={async (event) => {
+            await sendInput();
+            event.preventDefault();
+          }}
         >
           <InputBase
             fullWidth
@@ -143,8 +127,18 @@ const App = () => {
             sx={{ ml: 1, flex: 1 }}
             placeholder="LLMに聞く"
             inputProps={{ 'aria-label': 'ask-llm' }}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
+            onChange={(event) => {
+              setInputValue(event.target.value)
+            }}
+            onKeyDown={async (event) => {
+              if (event.key === 'Enter') {
+                if (event.shiftKey) {
+                  setInputValue(inputValue + '\n');
+                } else {
+                  await sendInput();
+                }
+              }
+            }}
             endAdornment={
               <InputAdornment position="end">
                 <IconButton type="submit">
