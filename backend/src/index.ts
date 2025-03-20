@@ -94,6 +94,159 @@ app.post('/', async (req: express.Request, res: express.Response) => {
   res.send({ message: responseText })
 });
 
+app.post('/management', async (req: express.Request, res: express.Response) => {
+  const responseText = await managementUsecase(req.body.input);
+  res.send({ message: responseText });
+});
+
+const managementUsecase = async (inputText: string) => {
+  const langfuse = new Langfuse({
+    secretKey: process.env.LANGFUSE_SECRET_KEY,
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+    baseUrl: process.env.LANGFUSE_HOST,
+  });
+  const [
+    instruction1,
+    instruction2,
+    instruction3,
+    instruction4,
+    instruction5,
+    advisePrompt,
+    summaryInstruction,
+    summaryAdvicePrompt,
+  ] = await Promise.all([
+    langfuse.getPrompt('manager_system_instruction_1'),
+    langfuse.getPrompt('manager_system_instruction_2'),
+    langfuse.getPrompt('manager_system_instruction_3'),
+    langfuse.getPrompt('manager_system_instruction_4'),
+    langfuse.getPrompt('manager_system_instruction_5'),
+    langfuse.getPrompt('advise_people_management_prompt'),
+    langfuse.getPrompt('summary_instruction'),
+    langfuse.getPrompt('summary_advice'),
+  ]);
+  const compiledInstructions = await Promise.all(
+    [
+      instruction1,
+      instruction2,
+      instruction3,
+      instruction4,
+      instruction5,
+    ].map((instruction) => instruction.compile())
+  );
+  const compiledAdvisePrompt = advisePrompt.compile({
+    user_input: inputText,
+  });
+
+  const [
+    advice1,
+    advice2,
+    advice3,
+    advice4,
+    advice5,
+  ] = await Promise.all(
+    compiledInstructions.map((compiledInstruction) => generateContent(compiledInstruction, compiledAdvisePrompt))
+  );
+
+  const [
+    compiledSummaryInstruction,
+    compiledSummaryPrompt,
+  ] = await Promise.all([
+    summaryInstruction.compile(),
+    summaryAdvicePrompt.compile({
+      user_input: inputText,
+      advice_manager_first:  advice1,
+      advice_manager_second: advice2,
+      advice_manager_third:  advice3,
+      advice_manager_fourth: advice4,
+      advice_manager_fifth:  advice5,
+    }),
+  ]);
+  const responseText = await generateContent(compiledSummaryInstruction, compiledSummaryPrompt)
+
+  const trace = langfuse.trace({
+    name: 'management_agent',
+  });
+
+  const adviseSpan = trace.span({
+    name: 'Advise from each managers',
+    input: inputText,
+    output: {
+      advice_manager_first:  advice1,
+      advice_manager_second: advice2,
+      advice_manager_third:  advice3,
+      advice_manager_fourth: advice4,
+      advice_manager_fifth:  advice5,
+    }
+  });
+  [
+    { instruction: instruction1, content: compiledInstructions[0], output: advice1 },
+    { instruction: instruction2, content: compiledInstructions[1], output: advice2 },
+    { instruction: instruction3, content: compiledInstructions[2], output: advice3 },
+    { instruction: instruction4, content: compiledInstructions[3], output: advice4 },
+    { instruction: instruction5, content: compiledInstructions[4], output: advice5 },
+  ].map((data) => {
+    adviseSpan.generation({
+      model: MODEL_NAME,
+      modelParameters: {
+        temperature: TEMPERATURE,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+      },
+      input: {
+        system_instruction: {
+          name: data.instruction.name,
+          version: data.instruction.version,
+          content: data.content,
+        },
+        prompt: {
+          name: advisePrompt.name,
+          version: advisePrompt.version,
+          user_input: inputText,
+          content: compiledAdvisePrompt,
+        }
+      },
+      output: data.output,
+    });
+  });
+
+  const summarySpan = trace.span({
+    name: 'Summary advices',
+    input: {
+      advice_manager_first:  advice1,
+      advice_manager_second: advice2,
+      advice_manager_third:  advice3,
+      advice_manager_fourth: advice4,
+      advice_manager_fifth:  advice5,
+    },
+    output: responseText,
+  });
+  summarySpan.generation({
+    model: MODEL_NAME,
+    modelParameters: {
+      temperature: TEMPERATURE,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+    },
+    input: {
+      system_instruction: {
+        name: summaryInstruction.name,
+        version: summaryInstruction.version,
+        content: compiledSummaryInstruction,
+      },
+      prompt: {
+        name: summaryAdvicePrompt.name,
+        version: summaryAdvicePrompt.version,
+        user_input: inputText,
+        advice_manager_first:  advice1,
+        advice_manager_second: advice2,
+        advice_manager_third:  advice3,
+        advice_manager_fourth: advice4,
+        advice_manager_fifth:  advice5,
+        content: compiledSummaryPrompt,
+      }
+    },
+    output: responseText,
+  })
+};
+
 app.post('/sample-trace', async (req: express.Request, res: express.Response) => {
   trace(req.body.input, req.body.output, 'sample-trace');
   res.send({ message: 'success' });
