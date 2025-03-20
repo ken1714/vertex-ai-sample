@@ -184,8 +184,9 @@ const managementUsecase = async (inputText: string) => {
     { instruction: instruction3, content: compiledInstructions[2], output: advice3 },
     { instruction: instruction4, content: compiledInstructions[3], output: advice4 },
     { instruction: instruction5, content: compiledInstructions[4], output: advice5 },
-  ].map((data) => {
+  ].map((data, index) => {
     adviseSpan.generation({
+      name: `manager${index + 1}`,
       model: MODEL_NAME,
       modelParameters: {
         temperature: TEMPERATURE,
@@ -220,6 +221,7 @@ const managementUsecase = async (inputText: string) => {
     output: responseText,
   });
   summarySpan.generation({
+    name: 'summary',
     model: MODEL_NAME,
     modelParameters: {
       temperature: TEMPERATURE,
