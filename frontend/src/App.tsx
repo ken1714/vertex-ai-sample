@@ -51,7 +51,7 @@ const App = () => {
   const [traceResponseValue, setTraceResponseValue] = useState<string>();
   const [response, setResponse] = useState<GenerateContent>();
   const sendInput = async () => {
-    const response = await fetch(import.meta.env.VITE_BACKEND_URL, {
+    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/management`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
