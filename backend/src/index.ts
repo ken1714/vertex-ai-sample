@@ -11,17 +11,24 @@ import { Langfuse } from 'langfuse';
 
 dotenv.config();
 
+const MODEL_NAME = 'gemini-1.5-flash-002';
+const TEMPERATURE = 1.0;
+const MAX_OUTPUT_TOKENS = 8192;
+
 export const generateContent = async (context: string, inputText: string): Promise<string> => {
   const vertexAI = new VertexAI({
     project: process.env.PROJECT_ID,
     location: process.env.LOCATION
   });
   const generativeModel = vertexAI.getGenerativeModel({
-    model: 'gemini-1.0-pro',
+    model: MODEL_NAME,
     // The following parameters are optional
     // They can also be passed to individual content generation requests
     safetySettings: [{category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE}],
-    generationConfig: {maxOutputTokens: 256},
+    generationConfig: {
+      temperature: TEMPERATURE,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+    },
     systemInstruction: {
       role: 'system',
       parts: [{
@@ -49,10 +56,10 @@ const trace = (inputText: string, responseText: string, traceName: string) => {
   });
 
   trace.generation({
-    model: 'gemini-1.0-pro',
+    model: MODEL_NAME,
     modelParameters: {
-      temperature: 1.0,
-      maxOutputTokens: 256,
+      temperature: TEMPERATURE,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
     },
     input: inputText,
     output: responseText,
