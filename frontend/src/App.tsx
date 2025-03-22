@@ -103,7 +103,17 @@ const App = () => {
           setTraceInputValue('');
           setTraceResponseValue('');
         }}>
-          トレース送信
+          サンプルトレース送信
+        </Button>
+        <Button onClick={() => {
+          fetch(import.meta.env.VITE_BACKEND_URL + '/evaluate-management', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+          });
+        }}>
+          評価の実施
         </Button>
       </Box>
       <p>LLMへの送信用</p>
