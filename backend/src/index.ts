@@ -165,6 +165,8 @@ const managementUsecase = async (inputText: string) => {
 
   const trace = langfuse.trace({
     name: 'management_agent',
+    input: inputText,
+    output: responseText,
   });
 
   const adviseSpan = trace.span({
