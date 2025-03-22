@@ -7,7 +7,7 @@ import {
 import bodyParser from 'body-parser';
 import * as dotenv from 'dotenv';
 import cors from 'cors'
-import { Langfuse } from 'langfuse';
+import { Langfuse, LangfuseTraceClient } from 'langfuse';
 
 dotenv.config();
 
@@ -95,11 +95,14 @@ app.post('/', async (req: express.Request, res: express.Response) => {
 });
 
 app.post('/management', async (req: express.Request, res: express.Response) => {
-  const responseText = await managementUsecase(req.body.input);
+  const { responseText } = await managementUsecase({ inputText: req.body.input, isEvaluation: false });
   res.send({ message: responseText });
 });
 
-const managementUsecase = async (inputText: string) => {
+const managementUsecase = async (input: { inputText: string; isEvaluation: boolean }): Promise<{
+  langfuseTraceClient: LangfuseTraceClient,
+  responseText: string,
+}> => {
   const langfuse = new Langfuse({
     secretKey: process.env.LANGFUSE_SECRET_KEY,
     publicKey: process.env.LANGFUSE_PUBLIC_KEY,
@@ -134,7 +137,7 @@ const managementUsecase = async (inputText: string) => {
     ].map((instruction) => instruction.compile())
   );
   const compiledAdvisePrompt = advisePrompt.compile({
-    user_input: inputText,
+    user_input: input.inputText,
   });
 
   const [
@@ -153,7 +156,7 @@ const managementUsecase = async (inputText: string) => {
   ] = await Promise.all([
     summaryInstruction.compile(),
     summaryAdvicePrompt.compile({
-      user_input: inputText,
+      user_input: input.inputText,
       advice_manager_first:  advice1,
       advice_manager_second: advice2,
       advice_manager_third:  advice3,
@@ -165,13 +168,14 @@ const managementUsecase = async (inputText: string) => {
 
   const trace = langfuse.trace({
     name: 'management_agent',
-    input: inputText,
+    input: input.inputText,
     output: responseText,
+    tags: input.isEvaluation ? ['evaluation'] : null,
   });
 
   const adviseSpan = trace.span({
     name: 'Advise from each managers',
-    input: inputText,
+    input: input.inputText,
     output: {
       advice_manager_first:  advice1,
       advice_manager_second: advice2,
@@ -203,7 +207,7 @@ const managementUsecase = async (inputText: string) => {
         prompt: {
           name: advisePrompt.name,
           version: advisePrompt.version,
-          user_input: inputText,
+          user_input: input.inputText,
           content: compiledAdvisePrompt,
         }
       },
@@ -238,7 +242,7 @@ const managementUsecase = async (inputText: string) => {
       prompt: {
         name: summaryAdvicePrompt.name,
         version: summaryAdvicePrompt.version,
-        user_input: inputText,
+        user_input: input.inputText,
         advice_manager_first:  advice1,
         advice_manager_second: advice2,
         advice_manager_third:  advice3,
@@ -248,8 +252,31 @@ const managementUsecase = async (inputText: string) => {
       }
     },
     output: responseText,
-  })
+  });
+
+  return {
+    langfuseTraceClient: trace,
+    responseText,
+  };
 };
+
+app.post('/evaluate-management', async (_req: express.Request, res: express.Response) => {
+  const langfuse = new Langfuse({
+    secretKey: process.env.LANGFUSE_SECRET_KEY,
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+    baseUrl: process.env.LANGFUSE_HOST,
+  });
+
+  const dataset = await langfuse.getDataset('Management Agent');
+  const runName = `management-agent-${new Date()}`
+  for (const item of dataset.items) {
+    if (typeof item.input !== 'string') continue;
+    const { langfuseTraceClient } = await managementUsecase({ inputText: item.input, isEvaluation: true })
+    item.link(langfuseTraceClient, runName);
+  }
+  await langfuse.flushAsync();
+  res.send({ success: true });
+});
 
 app.post('/sample-trace', async (req: express.Request, res: express.Response) => {
   trace(req.body.input, req.body.output, 'sample-trace');
