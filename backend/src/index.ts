@@ -271,12 +271,57 @@ app.post('/evaluate-management', async (_req: express.Request, res: express.Resp
   const runName = `management-agent-${new Date()}`
   for (const item of dataset.items) {
     if (typeof item.input !== 'string') continue;
-    const { langfuseTraceClient } = await managementUsecase({ inputText: item.input, isEvaluation: true })
+    const { langfuseTraceClient, responseText } = await managementUsecase({ inputText: item.input, isEvaluation: true });
+
+    const evaluators = [
+      {
+        name: 'Helpfulness',
+        promptName: 'evaluate_management_agent_helpfulness',
+      },
+      {
+        name: 'Hallucination',
+        promptName: 'evaluate_management_agent_hallucination',
+      },
+    ];
+    for (const evaluator of evaluators) {
+      try {
+        const {
+          value,
+          comment,
+        } = await evaluate({
+          langfuse,
+          promptName: evaluator.promptName,
+          userInput: item.input,
+          llmOutput: responseText
+        });
+        langfuseTraceClient.score({
+          name: evaluator.name,
+          value,
+          comment,
+        });
+      } catch (error) {
+        console.log(`${evaluator.name}の評価時にエラー`);
+        console.log(error);
+      }
+    }
+
     item.link(langfuseTraceClient, runName);
   }
   await langfuse.flushAsync();
   res.send({ success: true });
 });
+
+const evaluate = async (input: { langfuse: Langfuse, promptName: string, userInput: string, llmOutput: string }): Promise<{ value: number; comment: string }> => {
+  const { langfuse, promptName, userInput, llmOutput } = input;
+  const prompt = await langfuse.getPrompt(promptName);
+  const compiledPrompt = await prompt.compile({
+    user_input: userInput,
+    llm_output: llmOutput,
+  });
+
+  const evaluateResult = (await generateContent('', compiledPrompt)).replace(/(json|text|`)/g, '');
+  return JSON.parse(evaluateResult);
+}
 
 app.post('/sample-trace', async (req: express.Request, res: express.Response) => {
   trace(req.body.input, req.body.output, 'sample-trace');
