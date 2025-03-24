@@ -15,7 +15,33 @@ const MODEL_NAME = 'gemini-1.5-flash-002';
 const TEMPERATURE = 1.0;
 const MAX_OUTPUT_TOKENS = 8192;
 
-export const generateContent = async (context: string, inputText: string): Promise<string> => {
+type GenerativeAIOutput = {
+  content: string;
+  inputToken: number;
+  outputToken: number;
+  inputCost: number;
+  outputCost: number;
+};
+
+// Gemini 1.5 Flashのみ対応
+const calculateVertexAIInputCost = (inputInstruction: string, inputPrompt: string, inputToken: number): number => {
+  const inputLength = inputInstruction.length + inputPrompt.length;
+  if (inputToken > 128000) {
+    return 0.0000375 * inputLength / 1000;
+  } else {
+    return 0.00001875 * inputLength / 1000;
+  }
+}
+
+const calculateVertexAIOutputCost = (outputContent: string, inputToken: number): number => {
+  if (inputToken > 128000) {
+    return 0.00015 * outputContent.length / 1000;
+  } else {
+    return 0.000075 * outputContent.length / 1000;
+  }
+}
+
+export const generateContent = async (context: string, inputText: string): Promise<GenerativeAIOutput> => {
   const vertexAI = new VertexAI({
     project: process.env.PROJECT_ID,
     location: process.env.LOCATION
@@ -41,7 +67,15 @@ export const generateContent = async (context: string, inputText: string): Promi
     contents: [{role: 'user', parts: [{text: inputText}]}],
   };
   const result = await generativeModel.generateContent(request);
-  return result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const resultText = result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const inputToken = result.response.usageMetadata?.promptTokenCount || 0
+  return {
+    content: resultText,
+    inputToken,
+    outputToken: result.response.usageMetadata?.candidatesTokenCount || 0,
+    inputCost: calculateVertexAIInputCost(context, inputText,inputToken),
+    outputCost: calculateVertexAIOutputCost(resultText, inputToken),
+  }
 };
 
 const trace = (inputText: string, responseText: string, traceName: string) => {
@@ -90,7 +124,7 @@ app.post('/', async (req: express.Request, res: express.Response) => {
     input: '新米マネージャーで、ピープルマネジメントの経験は非常に浅い'
   })
   const responseText = await generateContent(compiledContext, req.body.input);
-  trace(req.body.input, responseText, 'sample-llm');
+  trace(req.body.input, responseText.content, 'sample-llm');
   res.send({ message: responseText })
 });
 
@@ -154,18 +188,18 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
 
   const compiledSummaryAdvicePrompt = await summaryAdvicePrompt.compile({
     user_input: input.inputText,
-    advice_manager_first:  advice1,
-    advice_manager_second: advice2,
-    advice_manager_third:  advice3,
-    advice_manager_fourth: advice4,
-    advice_manager_fifth:  advice5,
+    advice_manager_first:  advice1.content,
+    advice_manager_second: advice2.content,
+    advice_manager_third:  advice3.content,
+    advice_manager_fourth: advice4.content,
+    advice_manager_fifth:  advice5.content,
   });
   const compiledSummaryAdviceInstruction = compiledSummaryAdvicePrompt.find((value) => value.role === 'system');
   const compiledSummaryAdviceUserPrompt = compiledSummaryAdvicePrompt.find((value) => value.role === 'user');
   if (!compiledSummaryAdviceInstruction || !compiledSummaryAdviceUserPrompt) {
     throw Error('プロンプトが正しく設定されていません。');
   }
-  const responseText = await generateContent(
+  const summary = await generateContent(
     compiledSummaryAdviceInstruction.content,
     compiledSummaryAdviceUserPrompt.content,
   );
@@ -173,8 +207,9 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
   const trace = langfuse.trace({
     name: 'management_agent',
     input: input.inputText,
-    output: responseText,
+    output: summary.content,
     tags: input.isEvaluation ? ['evaluation'] : null,
+    
   });
 
   const adviseSpan = trace.span({
@@ -207,8 +242,16 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
         version: data.prompt.version,
         user_input: input.inputText,
       },
-      output: data.output,
+      output: data.output.content,
       prompt: data.prompt,
+      usageDetails: {
+        input: data.output.inputToken,
+        output: data.output.outputToken,
+      },
+      costDetails: {
+        input: data.output.inputCost,
+        output: data.output.outputCost,
+      },
     });
   });
 
@@ -221,7 +264,7 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
       advice_manager_fourth: advice4,
       advice_manager_fifth:  advice5,
     },
-    output: responseText,
+    output: summary.content,
   });
   summarySpan.generation({
     name: 'summary',
@@ -240,13 +283,21 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
       advice_manager_fourth: advice4,
       advice_manager_fifth:  advice5,
     },
-    output: responseText,
+    output: summary.content,
     prompt: summaryAdvicePrompt,
+    usageDetails: {
+      input: summary.inputToken,
+      output: summary.outputToken,
+    },
+    costDetails: {
+      input: summary.inputCost,
+      output: summary.outputCost,
+    },
   });
 
   return {
     langfuseTraceClient: trace,
-    responseText,
+    responseText: summary.content,
   };
 };
 
@@ -309,7 +360,7 @@ const evaluate = async (input: { langfuse: Langfuse, promptName: string, userInp
     llm_output: llmOutput,
   });
 
-  const evaluateResult = (await generateContent('', compiledPrompt)).replace(/(json|text|`)/g, '');
+  const evaluateResult = (await generateContent('', compiledPrompt)).content.replace(/(json|text|`)/g, '');
   return JSON.parse(evaluateResult);
 }
 
