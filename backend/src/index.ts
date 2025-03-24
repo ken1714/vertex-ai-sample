@@ -109,36 +109,31 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
     baseUrl: process.env.LANGFUSE_HOST,
   });
   const [
-    instruction1,
-    instruction2,
-    instruction3,
-    instruction4,
-    instruction5,
-    advisePrompt,
-    summaryInstruction,
+    managerPrompt1,
+    managerPrompt2,
+    managerPrompt3,
+    managerPrompt4,
+    managerPrompt5,
     summaryAdvicePrompt,
   ] = await Promise.all([
-    langfuse.getPrompt('manager_system_instruction_1'),
-    langfuse.getPrompt('manager_system_instruction_2'),
-    langfuse.getPrompt('manager_system_instruction_3'),
-    langfuse.getPrompt('manager_system_instruction_4'),
-    langfuse.getPrompt('manager_system_instruction_5'),
-    langfuse.getPrompt('advise_people_management_prompt'),
-    langfuse.getPrompt('summary_instruction'),
-    langfuse.getPrompt('summary_advice'),
+    langfuse.getPrompt('manager_1', undefined, { type: 'chat' }),
+    langfuse.getPrompt('manager_2', undefined, { type: 'chat' }),
+    langfuse.getPrompt('manager_3', undefined, { type: 'chat' }),
+    langfuse.getPrompt('manager_4', undefined, { type: 'chat' }),
+    langfuse.getPrompt('manager_5', undefined, { type: 'chat' }),
+    langfuse.getPrompt('summary_advices', undefined, { type: 'chat' }),
   ]);
-  const compiledInstructions = await Promise.all(
+  const compiledManagerPrompts = await Promise.all(
     [
-      instruction1,
-      instruction2,
-      instruction3,
-      instruction4,
-      instruction5,
-    ].map((instruction) => instruction.compile())
+      managerPrompt1,
+      managerPrompt2,
+      managerPrompt3,
+      managerPrompt4,
+      managerPrompt5,
+    ].map((managerPrompt) => managerPrompt.compile({
+      user_input: input.inputText,
+    }))
   );
-  const compiledAdvisePrompt = advisePrompt.compile({
-    user_input: input.inputText,
-  });
 
   const [
     advice1,
@@ -147,24 +142,33 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
     advice4,
     advice5,
   ] = await Promise.all(
-    compiledInstructions.map((compiledInstruction) => generateContent(compiledInstruction, compiledAdvisePrompt))
+    compiledManagerPrompts.map(async (compiledManagerPrompt) => {
+      const instruction = compiledManagerPrompt.find((value) => value.role === 'system');
+      const prompt = compiledManagerPrompt.find((value) => value.role === 'user');
+      if (!instruction || !prompt) {
+        throw Error('プロンプトが正しく設定されていません。');
+      }
+      return await generateContent(instruction.content, prompt.content)
+    })
   );
 
-  const [
-    compiledSummaryInstruction,
-    compiledSummaryPrompt,
-  ] = await Promise.all([
-    summaryInstruction.compile(),
-    summaryAdvicePrompt.compile({
-      user_input: input.inputText,
-      advice_manager_first:  advice1,
-      advice_manager_second: advice2,
-      advice_manager_third:  advice3,
-      advice_manager_fourth: advice4,
-      advice_manager_fifth:  advice5,
-    }),
-  ]);
-  const responseText = await generateContent(compiledSummaryInstruction, compiledSummaryPrompt)
+  const compiledSummaryAdvicePrompt = await summaryAdvicePrompt.compile({
+    user_input: input.inputText,
+    advice_manager_first:  advice1,
+    advice_manager_second: advice2,
+    advice_manager_third:  advice3,
+    advice_manager_fourth: advice4,
+    advice_manager_fifth:  advice5,
+  });
+  const compiledSummaryAdviceInstruction = compiledSummaryAdvicePrompt.find((value) => value.role === 'system');
+  const compiledSummaryAdviceUserPrompt = compiledSummaryAdvicePrompt.find((value) => value.role === 'user');
+  if (!compiledSummaryAdviceInstruction || !compiledSummaryAdviceUserPrompt) {
+    throw Error('プロンプトが正しく設定されていません。');
+  }
+  const responseText = await generateContent(
+    compiledSummaryAdviceInstruction.content,
+    compiledSummaryAdviceUserPrompt.content,
+  );
 
   const trace = langfuse.trace({
     name: 'management_agent',
@@ -185,11 +189,11 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
     }
   });
   [
-    { instruction: instruction1, content: compiledInstructions[0], output: advice1 },
-    { instruction: instruction2, content: compiledInstructions[1], output: advice2 },
-    { instruction: instruction3, content: compiledInstructions[2], output: advice3 },
-    { instruction: instruction4, content: compiledInstructions[3], output: advice4 },
-    { instruction: instruction5, content: compiledInstructions[4], output: advice5 },
+    { prompt: managerPrompt1, output: advice1 },
+    { prompt: managerPrompt2, output: advice2 },
+    { prompt: managerPrompt3, output: advice3 },
+    { prompt: managerPrompt4, output: advice4 },
+    { prompt: managerPrompt5, output: advice5 },
   ].map((data, index) => {
     adviseSpan.generation({
       name: `manager${index + 1}`,
@@ -199,19 +203,12 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       },
       input: {
-        system_instruction: {
-          name: data.instruction.name,
-          version: data.instruction.version,
-          content: data.content,
-        },
-        prompt: {
-          name: advisePrompt.name,
-          version: advisePrompt.version,
-          user_input: input.inputText,
-          content: compiledAdvisePrompt,
-        }
+        name: data.prompt.name,
+        version: data.prompt.version,
+        user_input: input.inputText,
       },
       output: data.output,
+      prompt: data.prompt,
     });
   });
 
@@ -234,24 +231,17 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
       maxOutputTokens: MAX_OUTPUT_TOKENS,
     },
     input: {
-      system_instruction: {
-        name: summaryInstruction.name,
-        version: summaryInstruction.version,
-        content: compiledSummaryInstruction,
-      },
-      prompt: {
-        name: summaryAdvicePrompt.name,
-        version: summaryAdvicePrompt.version,
-        user_input: input.inputText,
-        advice_manager_first:  advice1,
-        advice_manager_second: advice2,
-        advice_manager_third:  advice3,
-        advice_manager_fourth: advice4,
-        advice_manager_fifth:  advice5,
-        content: compiledSummaryPrompt,
-      }
+      name: summaryAdvicePrompt.name,
+      version: summaryAdvicePrompt.version,
+      user_input: input.inputText,
+      advice_manager_first:  advice1,
+      advice_manager_second: advice2,
+      advice_manager_third:  advice3,
+      advice_manager_fourth: advice4,
+      advice_manager_fifth:  advice5,
     },
     output: responseText,
+    prompt: summaryAdvicePrompt,
   });
 
   return {
