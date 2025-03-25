@@ -21,6 +21,8 @@ type GenerativeAIOutput = {
   outputToken: number;
   inputCost: number;
   outputCost: number;
+  startTime: Date;
+  endTime: Date;
 };
 
 // Gemini 1.5 Flashのみ対応
@@ -42,6 +44,7 @@ const calculateVertexAIOutputCost = (outputContent: string, inputToken: number):
 }
 
 export const generateContent = async (context: string, inputText: string): Promise<GenerativeAIOutput> => {
+  const startTime = new Date();
   const vertexAI = new VertexAI({
     project: process.env.PROJECT_ID,
     location: process.env.LOCATION
@@ -75,6 +78,8 @@ export const generateContent = async (context: string, inputText: string): Promi
     outputToken: result.response.usageMetadata?.candidatesTokenCount || 0,
     inputCost: calculateVertexAIInputCost(context, inputText,inputToken),
     outputCost: calculateVertexAIOutputCost(resultText, inputToken),
+    startTime,
+    endTime: new Date(),
   }
 };
 
@@ -252,6 +257,9 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
         input: data.output.inputCost,
         output: data.output.outputCost,
       },
+      startTime: data.output.startTime,
+      completionStartTime: data.output.endTime,
+      endTime: data.output.endTime,
     });
   });
 
@@ -293,6 +301,9 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
       input: summary.inputCost,
       output: summary.outputCost,
     },
+    startTime: summary.startTime,
+    completionStartTime: summary.endTime,
+    endTime: summary.endTime,
   });
 
   return {
