@@ -1,9 +1,9 @@
 import express from 'express';
 import {
+  GoogleGenAI,
   HarmBlockThreshold,
   HarmCategory,
-  VertexAI
-} from '@google-cloud/vertexai';
+} from '@google/genai';
 import bodyParser from 'body-parser';
 import { config } from 'dotenv';
 import cors from 'cors'
@@ -45,37 +45,33 @@ const calculateVertexAIOutputCost = (outputContent: string, inputToken: number):
 
 export const generateContent = async (context: string, inputText: string): Promise<GenerativeAIOutput> => {
   const startTime = new Date();
-  const vertexAI = new VertexAI({
+  const vertexAI = new GoogleGenAI({
+    vertexai: true,
     project: process.env.PROJECT_ID,
     location: process.env.LOCATION
-  });
-  const generativeModel = vertexAI.getGenerativeModel({
-    model: MODEL_NAME,
-    // The following parameters are optional
-    // They can also be passed to individual content generation requests
-    safetySettings: [{category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE}],
-    generationConfig: {
+});
+
+  const result = await vertexAI.models.generateContent({
+    model: 'gemini-2.0-flash-001',
+    contents: inputText,
+    config: {
+      systemInstruction: context,
       temperature: TEMPERATURE,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
-    },
-    systemInstruction: {
-      role: 'system',
-      parts: [{
-        text: context
-      }]
-    },
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        }
+      ],
+    }
   });
-
-  const request = {
-    contents: [{role: 'user', parts: [{text: inputText}]}],
-  };
-  const result = await generativeModel.generateContent(request);
-  const resultText = result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const inputToken = result.response.usageMetadata?.promptTokenCount || 0
+  const resultText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const inputToken = result.usageMetadata?.promptTokenCount || 0
   return {
     content: resultText,
     inputToken,
-    outputToken: result.response.usageMetadata?.candidatesTokenCount || 0,
+    outputToken: result.usageMetadata?.candidatesTokenCount || 0,
     inputCost: calculateVertexAIInputCost(context, inputText,inputToken),
     outputCost: calculateVertexAIOutputCost(resultText, inputToken),
     startTime,
