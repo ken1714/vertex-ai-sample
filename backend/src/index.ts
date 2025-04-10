@@ -1,9 +1,9 @@
 import express from 'express';
 import {
+  GoogleGenAI,
   HarmBlockThreshold,
   HarmCategory,
-  VertexAI
-} from '@google-cloud/vertexai';
+} from '@google/genai';
 import bodyParser from 'body-parser';
 import { config } from 'dotenv';
 import cors from 'cors'
@@ -11,7 +11,7 @@ import { Langfuse, LangfuseTraceClient } from 'langfuse';
 
 config();
 
-const MODEL_NAME = 'gemini-1.5-flash-002';
+const MODEL_NAME = 'gemini-2.0-flash-001';
 const TEMPERATURE = 1.0;
 const MAX_OUTPUT_TOKENS = 8192;
 
@@ -25,59 +25,48 @@ type GenerativeAIOutput = {
   endTime: Date;
 };
 
-// Gemini 1.5 Flashのみ対応
-const calculateVertexAIInputCost = (inputInstruction: string, inputPrompt: string, inputToken: number): number => {
-  const inputLength = inputInstruction.length + inputPrompt.length;
-  if (inputToken > 128000) {
-    return 0.0000375 * inputLength / 1000;
-  } else {
-    return 0.00001875 * inputLength / 1000;
-  }
+// Gemini 2.0 Flashのみ対応。Batch APIの価格での計算
+const calculateVertexAIInputCost = (inputToken: number): number => {
+  return 0.075 * inputToken / 1e6;
 }
 
-const calculateVertexAIOutputCost = (outputContent: string, inputToken: number): number => {
-  if (inputToken > 128000) {
-    return 0.00015 * outputContent.length / 1000;
-  } else {
-    return 0.000075 * outputContent.length / 1000;
-  }
+const calculateVertexAIOutputCost = (outputToken: number): number => {
+  return 0.30 * outputToken / 1e6;
 }
 
 export const generateContent = async (context: string, inputText: string): Promise<GenerativeAIOutput> => {
   const startTime = new Date();
-  const vertexAI = new VertexAI({
+  // TODO: リージョンは後でインフラに合わせる
+  const vertexAI = new GoogleGenAI({
+    vertexai: true,
     project: process.env.PROJECT_ID,
-    location: process.env.LOCATION
-  });
-  const generativeModel = vertexAI.getGenerativeModel({
-    model: MODEL_NAME,
-    // The following parameters are optional
-    // They can also be passed to individual content generation requests
-    safetySettings: [{category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE}],
-    generationConfig: {
-      temperature: TEMPERATURE,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-    },
-    systemInstruction: {
-      role: 'system',
-      parts: [{
-        text: context
-      }]
-    },
+    location: 'us-central1'
   });
 
-  const request = {
-    contents: [{role: 'user', parts: [{text: inputText}]}],
-  };
-  const result = await generativeModel.generateContent(request);
-  const resultText = result.response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const inputToken = result.response.usageMetadata?.promptTokenCount || 0
+  const result = await vertexAI.models.generateContent({
+    model: MODEL_NAME,
+    contents: inputText,
+    config: {
+      systemInstruction: context,
+      temperature: TEMPERATURE,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        }
+      ],
+    }
+  });
+  const resultText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const inputToken = result.usageMetadata?.promptTokenCount || 0;
+  const outputToken = result.usageMetadata?.candidatesTokenCount || 0;
   return {
     content: resultText,
     inputToken,
-    outputToken: result.response.usageMetadata?.candidatesTokenCount || 0,
-    inputCost: calculateVertexAIInputCost(context, inputText,inputToken),
-    outputCost: calculateVertexAIOutputCost(resultText, inputToken),
+    outputToken,
+    inputCost: calculateVertexAIInputCost(inputToken),
+    outputCost: calculateVertexAIOutputCost(outputToken),
     startTime,
     endTime: new Date(),
   }
