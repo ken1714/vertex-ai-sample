@@ -5,11 +5,11 @@ import {
   VertexAI
 } from '@google-cloud/vertexai';
 import bodyParser from 'body-parser';
-import * as dotenv from 'dotenv';
+import { config } from 'dotenv';
 import cors from 'cors'
 import { Langfuse, LangfuseTraceClient } from 'langfuse';
 
-dotenv.config();
+config();
 
 const MODEL_NAME = 'gemini-1.5-flash-002';
 const TEMPERATURE = 1.0;
