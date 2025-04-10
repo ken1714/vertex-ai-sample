@@ -40,7 +40,7 @@ export const generateContent = async (context: string, inputText: string): Promi
     vertexai: true,
     project: process.env.PROJECT_ID,
     location: process.env.LOCATION
-});
+  });
 
   const result = await vertexAI.models.generateContent({
     model: MODEL_NAME,
