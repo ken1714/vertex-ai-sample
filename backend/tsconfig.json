@@ -9,6 +9,8 @@
     "rootDir": ".",
     "outDir": "./dist",
     "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
 
     /* Linting */
     "strict": true,
