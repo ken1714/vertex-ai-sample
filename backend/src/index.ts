@@ -11,7 +11,7 @@ import { Langfuse, LangfuseTraceClient } from 'langfuse';
 
 config();
 
-const MODEL_NAME = 'gemini-1.5-flash-002';
+const MODEL_NAME = 'gemini-2.0-flash-001';
 const TEMPERATURE = 1.0;
 const MAX_OUTPUT_TOKENS = 8192;
 
@@ -43,7 +43,7 @@ export const generateContent = async (context: string, inputText: string): Promi
 });
 
   const result = await vertexAI.models.generateContent({
-    model: 'gemini-2.0-flash-001',
+    model: MODEL_NAME,
     contents: inputText,
     config: {
       systemInstruction: context,
