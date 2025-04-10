@@ -36,10 +36,11 @@ const calculateVertexAIOutputCost = (outputToken: number): number => {
 
 export const generateContent = async (context: string, inputText: string): Promise<GenerativeAIOutput> => {
   const startTime = new Date();
+  // TODO: リージョンは後でインフラに合わせる
   const vertexAI = new GoogleGenAI({
     vertexai: true,
     project: process.env.PROJECT_ID,
-    location: process.env.LOCATION
+    location: 'us-central1'
   });
 
   const result = await vertexAI.models.generateContent({
