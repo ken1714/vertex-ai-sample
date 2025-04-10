@@ -25,22 +25,13 @@ type GenerativeAIOutput = {
   endTime: Date;
 };
 
-// Gemini 1.5 Flashのみ対応
-const calculateVertexAIInputCost = (inputInstruction: string, inputPrompt: string, inputToken: number): number => {
-  const inputLength = inputInstruction.length + inputPrompt.length;
-  if (inputToken > 128000) {
-    return 0.0000375 * inputLength / 1000;
-  } else {
-    return 0.00001875 * inputLength / 1000;
-  }
+// Gemini 2.0 Flashのみ対応。Batch APIの価格での計算
+const calculateVertexAIInputCost = (inputToken: number): number => {
+  return 0.075 * inputToken / 1e6;
 }
 
-const calculateVertexAIOutputCost = (outputContent: string, inputToken: number): number => {
-  if (inputToken > 128000) {
-    return 0.00015 * outputContent.length / 1000;
-  } else {
-    return 0.000075 * outputContent.length / 1000;
-  }
+const calculateVertexAIOutputCost = (outputToken: number): number => {
+  return 0.30 * outputToken / 1e6;
 }
 
 export const generateContent = async (context: string, inputText: string): Promise<GenerativeAIOutput> => {
@@ -67,13 +58,14 @@ export const generateContent = async (context: string, inputText: string): Promi
     }
   });
   const resultText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const inputToken = result.usageMetadata?.promptTokenCount || 0
+  const inputToken = result.usageMetadata?.promptTokenCount || 0;
+  const outputToken = result.usageMetadata?.candidatesTokenCount || 0;
   return {
     content: resultText,
     inputToken,
-    outputToken: result.usageMetadata?.candidatesTokenCount || 0,
-    inputCost: calculateVertexAIInputCost(context, inputText,inputToken),
-    outputCost: calculateVertexAIOutputCost(resultText, inputToken),
+    outputToken,
+    inputCost: calculateVertexAIInputCost(inputToken),
+    outputCost: calculateVertexAIOutputCost(outputToken),
     startTime,
     endTime: new Date(),
   }
