@@ -11,7 +11,7 @@ import { Langfuse, LangfuseTraceClient } from 'langfuse';
 
 config();
 
-const MODEL_NAME = 'gemini-2.0-flash-001';
+const DEFAULT_MODEL_NAME = 'gemini-2.0-flash-001';
 const TEMPERATURE = 1.0;
 const MAX_OUTPUT_TOKENS = 8192;
 
@@ -34,7 +34,7 @@ const calculateVertexAIOutputCost = (outputToken: number): number => {
   return 0.30 * outputToken / 1e6;
 }
 
-export const generateContent = async (context: string, inputText: string): Promise<GenerativeAIOutput> => {
+export const generateContent = async (context: string, inputText: string, modelName: string = DEFAULT_MODEL_NAME): Promise<GenerativeAIOutput> => {
   const startTime = new Date();
   // TODO: リージョンは後でインフラに合わせる
   const vertexAI = new GoogleGenAI({
@@ -44,7 +44,7 @@ export const generateContent = async (context: string, inputText: string): Promi
   });
 
   const result = await vertexAI.models.generateContent({
-    model: MODEL_NAME,
+    model: modelName,
     contents: inputText,
     config: {
       systemInstruction: context,
@@ -84,7 +84,7 @@ const trace = (inputText: string, responseText: string, traceName: string) => {
   });
 
   trace.generation({
-    model: MODEL_NAME,
+    model: DEFAULT_MODEL_NAME,
     modelParameters: {
       temperature: TEMPERATURE,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -123,11 +123,19 @@ app.post('/', async (req: express.Request, res: express.Response) => {
 });
 
 app.post('/management', async (req: express.Request, res: express.Response) => {
-  const { responseText } = await managementUsecase({ inputText: req.body.input, isEvaluation: false });
+  const { responseText } = await managementUsecase({ 
+    inputText: req.body.input, 
+    isEvaluation: false,
+    llmVersion: req.body.llmVersion || DEFAULT_MODEL_NAME
+  });
   res.send({ message: responseText });
 });
 
-const managementUsecase = async (input: { inputText: string; isEvaluation: boolean }): Promise<{
+const managementUsecase = async (input: { 
+  inputText: string; 
+  llmVersion: string;
+  isEvaluation: boolean;
+}): Promise<{
   langfuseTraceClient: LangfuseTraceClient,
   responseText: string,
 }> => {
@@ -176,7 +184,7 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
       if (!instruction || !prompt) {
         throw Error('プロンプトが正しく設定されていません。');
       }
-      return await generateContent(instruction.content, prompt.content)
+      return await generateContent(instruction.content, prompt.content, input.llmVersion)
     })
   );
 
@@ -196,6 +204,7 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
   const summary = await generateContent(
     compiledSummaryAdviceInstruction.content,
     compiledSummaryAdviceUserPrompt.content,
+    input.llmVersion
   );
 
   const trace = langfuse.trace({
@@ -226,7 +235,7 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
   ].map((data, index) => {
     adviseSpan.generation({
       name: `manager${index + 1}`,
-      model: MODEL_NAME,
+      model: input.llmVersion,
       modelParameters: {
         temperature: TEMPERATURE,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -265,7 +274,7 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
   });
   summarySpan.generation({
     name: 'summary',
-    model: MODEL_NAME,
+    model: input.llmVersion,
     modelParameters: {
       temperature: TEMPERATURE,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -301,7 +310,7 @@ const managementUsecase = async (input: { inputText: string; isEvaluation: boole
   };
 };
 
-app.post('/evaluate-management', async (_req: express.Request, res: express.Response) => {
+app.post('/evaluate-management', async (req: express.Request, res: express.Response) => {
   const langfuse = new Langfuse({
     secretKey: process.env.LANGFUSE_SECRET_KEY,
     publicKey: process.env.LANGFUSE_PUBLIC_KEY,
@@ -312,7 +321,11 @@ app.post('/evaluate-management', async (_req: express.Request, res: express.Resp
   const runName = `management-agent-${new Date()}`
   for (const item of dataset.items) {
     if (typeof item.input !== 'string') continue;
-    const { langfuseTraceClient, responseText } = await managementUsecase({ inputText: item.input, isEvaluation: true });
+    const { langfuseTraceClient, responseText } = await managementUsecase({ 
+      inputText: item.input, 
+      isEvaluation: true,
+      llmVersion: req.body.llmVersion || DEFAULT_MODEL_NAME
+    });
 
     const evaluators = [
       {
@@ -360,7 +373,7 @@ const evaluate = async (input: { langfuse: Langfuse, promptName: string, userInp
     llm_output: llmOutput,
   });
 
-  const evaluateResult = (await generateContent('', compiledPrompt)).content.replace(/(json|text|`)/g, '');
+  const evaluateResult = (await generateContent('', compiledPrompt, DEFAULT_MODEL_NAME)).content.replace(/(json|text|`)/g, '');
   return JSON.parse(evaluateResult);
 }
 

@@ -1,4 +1,3 @@
-
 import './App.css';
 
 import SendIcon from '@mui/icons-material/Send';
@@ -9,6 +8,10 @@ import {
   InputAdornment,
   InputBase,
   Paper,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -50,6 +53,8 @@ const App = () => {
   const [traceInputValue, setTraceInputValue] = useState<string>();
   const [traceResponseValue, setTraceResponseValue] = useState<string>();
   const [response, setResponse] = useState<GenerateContent>();
+  const [selectedLlmVersion, setSelectedLlmVersion] = useState<string>('gemini-2.0-flash-001');
+
   const sendInput = async () => {
     const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/management`, {
       method: 'POST',
@@ -58,6 +63,7 @@ const App = () => {
       },
       body: JSON.stringify({
         input: inputValue,
+        llmVersion: selectedLlmVersion,
       }),
     });
     const data = await response.json();
@@ -69,6 +75,18 @@ const App = () => {
     <>
       <p>トレース入力サンプル</p>
       <Box>
+        <FormControl sx={{ m: 1, minWidth: 120 }}>
+          <InputLabel id="gemini-version-label">LLM Version</InputLabel>
+          <Select
+            labelId="gemini-version-label"
+            value={selectedLlmVersion}
+            label="LLM Version"
+            onChange={(e) => setSelectedLlmVersion(e.target.value)}
+          >
+            <MenuItem value="gemini-2.0-flash-001">Gemini 2.0 Flash</MenuItem>
+            <MenuItem value="gemini-2.0-flash-lite-001">Gemini 2.0 Flash Lite</MenuItem>
+          </Select>
+        </FormControl>
         <InputBase
           fullWidth
           multiline
@@ -111,6 +129,9 @@ const App = () => {
             headers: {
               'Content-Type': 'application/json'
             },
+            body: JSON.stringify({
+              llmVersion: selectedLlmVersion,
+            }),
           });
         }}>
           評価の実施
