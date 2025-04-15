@@ -1,6 +1,7 @@
 import './App.css';
 
 import SendIcon from '@mui/icons-material/Send';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import {
   Box,
   Button,
@@ -18,8 +19,14 @@ import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import styled from "styled-components";
 
-// APIリクエストの状態を管理するための型
-type RequestState = {
+// APIリクエストの状態を管理するための型を分割
+type LlmRequestState = {
+  isLoading: boolean;
+  error: string | null;
+};
+
+type EvaluationState = {
+  isCompleted: boolean;
   isLoading: boolean;
   error: string | null;
 };
@@ -34,17 +41,22 @@ const App = () => {
   const [traceResponseValue, setTraceResponseValue] = useState<string>();
   const [responseText, setResponseText] = useState<string>();
   const [selectedLlmVersion, setSelectedLlmVersion] = useState<string>('gemini-2.0-flash-001');
-  const [requestState, setRequestState] = useState<RequestState>({
+  const [llmRequestState, setLlmRequestState] = useState<LlmRequestState>({
+    isLoading: false,
+    error: null,
+  });
+  const [evaluationState, setEvaluationState] = useState<EvaluationState>({
+    isCompleted: false,
     isLoading: false,
     error: null,
   });
 
-  // APIリクエストを扱う共通関数
-  const handleApiRequest = useCallback(async (
+  // LLMリクエスト用の共通関数
+  const handleLlmRequest = useCallback(async (
     apiCall: () => Promise<any>,
     onSuccess?: (data: any) => void
   ) => {
-    setRequestState({ isLoading: true, error: null });
+    setLlmRequestState({ isLoading: true, error: null });
     try {
       const response = await apiCall();
       if (!response.ok) {
@@ -57,10 +69,33 @@ const App = () => {
       return data;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '予期せぬエラーが発生しました';
-      setRequestState(prev => ({ ...prev, error: errorMessage }));
+      setLlmRequestState(prev => ({ ...prev, error: errorMessage }));
       throw error;
     } finally {
-      setRequestState(prev => ({ ...prev, isLoading: false }));
+      setLlmRequestState(prev => ({ ...prev, isLoading: false }));
+    }
+  }, []);
+
+  // 評価用の共通関数
+  const handleEvaluationRequest = useCallback(async (
+    apiCall: () => Promise<any>
+  ) => {
+    setEvaluationState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const response = await apiCall();
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      await response.json();
+      setEvaluationState(prev => ({ ...prev, isCompleted: true, isLoading: false }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '予期せぬエラーが発生しました';
+      setEvaluationState(prev => ({ 
+        ...prev, 
+        isCompleted: false, 
+        isLoading: false,
+        error: errorMessage 
+      }));
     }
   }, []);
 
@@ -68,7 +103,7 @@ const App = () => {
   const sendInput = useCallback(async () => {
     if (!inputValue) return;
 
-    await handleApiRequest(
+    await handleLlmRequest(
       () => fetch(`${import.meta.env.VITE_BACKEND_URL}/management`, {
         method: 'POST',
         headers: {
@@ -84,13 +119,13 @@ const App = () => {
         setInputValue('');
       }
     );
-  }, [inputValue, selectedLlmVersion, handleApiRequest]);
+  }, [inputValue, selectedLlmVersion, handleLlmRequest]);
 
   // サンプルトレース送信処理
   const sendSampleTrace = useCallback(async () => {
     if (!traceInputValue || !traceResponseValue) return;
 
-    await handleApiRequest(
+    await handleLlmRequest(
       () => fetch(`${import.meta.env.VITE_BACKEND_URL}/sample-trace`, {
         method: 'POST',
         headers: {
@@ -106,11 +141,11 @@ const App = () => {
         setTraceResponseValue('');
       }
     );
-  }, [traceInputValue, traceResponseValue, handleApiRequest]);
+  }, [traceInputValue, traceResponseValue, handleLlmRequest]);
 
   // 評価実施処理
   const sendEvaluation = useCallback(async () => {
-    await handleApiRequest(
+    await handleEvaluationRequest(
       () => fetch(`${import.meta.env.VITE_BACKEND_URL}/evaluate-management`, {
         method: 'POST',
         headers: {
@@ -121,14 +156,19 @@ const App = () => {
         }),
       })
     );
-  }, [selectedLlmVersion, handleApiRequest]);
+  }, [selectedLlmVersion, handleEvaluationRequest]);
 
   return (
     <>
       {/* エラー表示 */}
-      {requestState.error && (
+      {llmRequestState.error && (
         <Box sx={{ color: 'error.main', mb: 2 }}>
-          {requestState.error}
+          {llmRequestState.error}
+        </Box>
+      )}
+      {evaluationState.error && (
+        <Box sx={{ color: 'error.main', mb: 2 }}>
+          {evaluationState.error}
         </Box>
       )}
 
@@ -168,13 +208,20 @@ const App = () => {
         />
         <Button 
           onClick={sendSampleTrace}
-          disabled={requestState.isLoading}
+          disabled={llmRequestState.isLoading}
         >
           サンプルトレース送信
         </Button>
         <Button 
           onClick={sendEvaluation}
-          disabled={requestState.isLoading}
+          disabled={evaluationState.isLoading}
+          endIcon={
+            evaluationState.isLoading ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : evaluationState.isCompleted ? (
+              <CheckCircleIcon sx={{ color: 'success.main' }} />
+            ) : null
+          }
         >
           評価の実施
         </Button>
@@ -214,16 +261,16 @@ const App = () => {
             }}
             endAdornment={
               <InputAdornment position="end">
-                <IconButton type="submit" disabled={requestState.isLoading}>
-                  {requestState.isLoading ? <CircularProgress size={24} /> : <SendIcon />}
+                <IconButton type="submit" disabled={llmRequestState.isLoading}>
+                  {llmRequestState.isLoading ? <CircularProgress size={24} /> : <SendIcon />}
                 </IconButton>
               </InputAdornment>
             }
-            disabled={requestState.isLoading}
+            disabled={llmRequestState.isLoading}
           />
         </Paper>
         <Paper>
-          {requestState.isLoading ? (
+          {llmRequestState.isLoading ? (
             <Box display="flex" justifyContent="center" p={3}>
               <CircularProgress />
             </Box>
