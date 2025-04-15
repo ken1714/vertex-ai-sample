@@ -1,6 +1,7 @@
 import './App.css';
 
 import SendIcon from '@mui/icons-material/Send';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import {
   Box,
   Button,
@@ -12,36 +13,22 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  CircularProgress,
 } from '@mui/material';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import styled from "styled-components";
 
-type GenerateContent = {
-  candidates: {
-    content: {
-      role: string;
-      parts: {
-        text: string;
-      }[];
-    };
-    finishReason: string;
-    safetyRatings: {
-      category: string;
-      probability: string;
-      probabilityScore: number;
-      severity: string;
-      severityScore: number;
-    }[];
-    avgLogprobs: number;
-    index: number;
-  }[];
-  usageMetadata: {
-    promptTokenCount: number;
-    candidatesTokenCount: number;
-    totalTokenCount: number;
-  };
-  modelVersion: string;
+// APIリクエストの状態を管理するための型を分割
+type LlmRequestState = {
+  isLoading: boolean;
+  error: string | null;
+};
+
+type EvaluationState = {
+  isCompleted: boolean;
+  isLoading: boolean;
+  error: string | null;
 };
 
 const LeftReactMarkdown = styled(ReactMarkdown)`
@@ -52,27 +39,139 @@ const App = () => {
   const [inputValue, setInputValue] = useState<string>();
   const [traceInputValue, setTraceInputValue] = useState<string>();
   const [traceResponseValue, setTraceResponseValue] = useState<string>();
-  const [response, setResponse] = useState<GenerateContent>();
+  const [responseText, setResponseText] = useState<string>();
   const [selectedLlmVersion, setSelectedLlmVersion] = useState<string>('gemini-2.0-flash-001');
+  const [llmRequestState, setLlmRequestState] = useState<LlmRequestState>({
+    isLoading: false,
+    error: null,
+  });
+  const [evaluationState, setEvaluationState] = useState<EvaluationState>({
+    isCompleted: false,
+    isLoading: false,
+    error: null,
+  });
 
-  const sendInput = async () => {
-    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/management`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        input: inputValue,
-        llmVersion: selectedLlmVersion,
+  // LLMリクエスト用の共通関数
+  const handleLlmRequest = useCallback(async (
+    apiCall: () => Promise<any>,
+    onSuccess?: (data: any) => void
+  ) => {
+    setLlmRequestState({ isLoading: true, error: null });
+    try {
+      const response = await apiCall();
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (onSuccess) {
+        onSuccess(data);
+      }
+      return data;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '予期せぬエラーが発生しました';
+      setLlmRequestState(prev => ({ ...prev, error: errorMessage }));
+      throw error;
+    } finally {
+      setLlmRequestState(prev => ({ ...prev, isLoading: false }));
+    }
+  }, []);
+
+  // 評価用の共通関数
+  const handleEvaluationRequest = useCallback(async (
+    apiCall: () => Promise<any>
+  ) => {
+    setEvaluationState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const response = await apiCall();
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      await response.json();
+      setEvaluationState(prev => ({ ...prev, isCompleted: true, isLoading: false }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '予期せぬエラーが発生しました';
+      setEvaluationState(prev => ({ 
+        ...prev, 
+        isCompleted: false, 
+        isLoading: false,
+        error: errorMessage 
+      }));
+    }
+  }, []);
+
+  // LLMへの入力送信処理
+  const sendInput = useCallback(async () => {
+    if (!inputValue) return;
+
+    await handleLlmRequest(
+      () => fetch(`${import.meta.env.VITE_BACKEND_URL}/management`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          input: inputValue,
+          llmVersion: selectedLlmVersion,
+        }),
       }),
-    });
-    const data = await response.json();
-    setResponse(JSON.parse(data.message));
-    setInputValue('');
-  };
+      (data) => {
+        setResponseText(data.message);
+        setInputValue('');
+      }
+    );
+  }, [inputValue, selectedLlmVersion, handleLlmRequest]);
+
+  // サンプルトレース送信処理
+  const sendSampleTrace = useCallback(async () => {
+    if (!traceInputValue || !traceResponseValue) return;
+
+    await handleLlmRequest(
+      () => fetch(`${import.meta.env.VITE_BACKEND_URL}/sample-trace`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          input: traceInputValue,
+          output: traceResponseValue,
+        }),
+      }),
+      () => {
+        setTraceInputValue('');
+        setTraceResponseValue('');
+      }
+    );
+  }, [traceInputValue, traceResponseValue, handleLlmRequest]);
+
+  // 評価実施処理
+  const sendEvaluation = useCallback(async () => {
+    await handleEvaluationRequest(
+      () => fetch(`${import.meta.env.VITE_BACKEND_URL}/evaluate-management`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          llmVersion: selectedLlmVersion,
+        }),
+      })
+    );
+  }, [selectedLlmVersion, handleEvaluationRequest]);
 
   return (
     <>
+      {/* エラー表示 */}
+      {llmRequestState.error && (
+        <Box sx={{ color: 'error.main', mb: 2 }}>
+          {llmRequestState.error}
+        </Box>
+      )}
+      {evaluationState.error && (
+        <Box sx={{ color: 'error.main', mb: 2 }}>
+          {evaluationState.error}
+        </Box>
+      )}
+
       <p>トレース入力サンプル</p>
       <Box>
         <FormControl sx={{ m: 1, minWidth: 120 }}>
@@ -107,33 +206,23 @@ const App = () => {
             setTraceResponseValue(event.target.value)
           }}
         />
-        <Button onClick={() => {
-          fetch(import.meta.env.VITE_BACKEND_URL + '/sample-trace', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              input: traceInputValue,
-              output: traceResponseValue,
-            }),
-          });
-          setTraceInputValue('');
-          setTraceResponseValue('');
-        }}>
+        <Button 
+          onClick={sendSampleTrace}
+          disabled={llmRequestState.isLoading}
+        >
           サンプルトレース送信
         </Button>
-        <Button onClick={() => {
-          fetch(import.meta.env.VITE_BACKEND_URL + '/evaluate-management', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              llmVersion: selectedLlmVersion,
-            }),
-          });
-        }}>
+        <Button 
+          onClick={sendEvaluation}
+          disabled={evaluationState.isLoading}
+          endIcon={
+            evaluationState.isLoading ? (
+              <CircularProgress size={20} color="inherit" />
+            ) : evaluationState.isCompleted ? (
+              <CheckCircleIcon sx={{ color: 'success.main' }} />
+            ) : null
+          }
+        >
           評価の実施
         </Button>
       </Box>
@@ -147,8 +236,8 @@ const App = () => {
         <Paper
           component="form"
           onSubmit={async (event) => {
-            await sendInput();
             event.preventDefault();
+            await sendInput();
           }}
         >
           <InputBase
@@ -172,21 +261,24 @@ const App = () => {
             }}
             endAdornment={
               <InputAdornment position="end">
-                <IconButton type="submit">
-                  <SendIcon />
+                <IconButton type="submit" disabled={llmRequestState.isLoading}>
+                  {llmRequestState.isLoading ? <CircularProgress size={24} /> : <SendIcon />}
                 </IconButton>
               </InputAdornment>
             }
+            disabled={llmRequestState.isLoading}
           />
         </Paper>
         <Paper>
-          <LeftReactMarkdown>
-            {
-              response ? response?.candidates.map((candidate) =>
-                candidate.content.parts.map((part) => part.text).join('')
-              ).join('') : ''
-            }
-          </LeftReactMarkdown>
+          {llmRequestState.isLoading ? (
+            <Box display="flex" justifyContent="center" p={3}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <LeftReactMarkdown>
+              {responseText ?? ''}
+            </LeftReactMarkdown>
+          )}
         </Paper>
       </Box>
     </>
