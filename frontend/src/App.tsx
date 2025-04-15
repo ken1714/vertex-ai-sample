@@ -37,8 +37,6 @@ const LeftReactMarkdown = styled(ReactMarkdown)`
 
 const App = () => {
   const [inputValue, setInputValue] = useState<string>();
-  const [traceInputValue, setTraceInputValue] = useState<string>();
-  const [traceResponseValue, setTraceResponseValue] = useState<string>();
   const [responseText, setResponseText] = useState<string>();
   const [selectedLlmVersion, setSelectedLlmVersion] = useState<string>('gemini-2.0-flash-001');
   const [llmRequestState, setLlmRequestState] = useState<LlmRequestState>({
@@ -121,28 +119,6 @@ const App = () => {
     );
   }, [inputValue, selectedLlmVersion, handleLlmRequest]);
 
-  // サンプルトレース送信処理
-  const sendSampleTrace = useCallback(async () => {
-    if (!traceInputValue || !traceResponseValue) return;
-
-    await handleLlmRequest(
-      () => fetch(`${import.meta.env.VITE_BACKEND_URL}/sample-trace`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          input: traceInputValue,
-          output: traceResponseValue,
-        }),
-      }),
-      () => {
-        setTraceInputValue('');
-        setTraceResponseValue('');
-      }
-    );
-  }, [traceInputValue, traceResponseValue, handleLlmRequest]);
-
   // 評価実施処理
   const sendEvaluation = useCallback(async () => {
     await handleEvaluationRequest(
@@ -172,8 +148,13 @@ const App = () => {
         </Box>
       )}
 
-      <p>トレース入力サンプル</p>
-      <Box>
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        mb: 2
+      }}>
         <FormControl sx={{ m: 1, minWidth: 120 }}>
           <InputLabel id="gemini-version-label">LLM Version</InputLabel>
           <Select
@@ -186,47 +167,33 @@ const App = () => {
             <MenuItem value="gemini-2.0-flash-lite-001">Gemini 2.0 Flash Lite</MenuItem>
           </Select>
         </FormControl>
-        <InputBase
-          fullWidth
-          multiline
-          value={traceInputValue}
-          sx={{ ml: 1, flex: 1 }}
-          placeholder="トレース入力サンプル"
-          onChange={(event) => {
-            setTraceInputValue(event.target.value)
-          }}
-        />
-        <InputBase
-          fullWidth
-          multiline
-          value={traceResponseValue}
-          sx={{ ml: 1, flex: 1 }}
-          placeholder="トレース出力サンプル"
-          onChange={(event) => {
-            setTraceResponseValue(event.target.value)
-          }}
-        />
         <Button 
-          onClick={sendSampleTrace}
-          disabled={llmRequestState.isLoading}
-        >
-          サンプルトレース送信
-        </Button>
-        <Button 
+          variant="contained"
+          color="primary"
+          size="large"
+          sx={{
+            m: 1,
+            fontWeight: 'bold',
+            minWidth: '200px',
+            boxShadow: 3,
+            '&:hover': {
+              boxShadow: 6,
+            }
+          }}
           onClick={sendEvaluation}
           disabled={evaluationState.isLoading}
           endIcon={
             evaluationState.isLoading ? (
               <CircularProgress size={20} color="inherit" />
-            ) : evaluationState.isCompleted ? (
-              <CheckCircleIcon sx={{ color: 'success.main' }} />
             ) : null
           }
         >
           評価の実施
         </Button>
+        {evaluationState.isCompleted && (
+          <CheckCircleIcon sx={{ color: 'success.main', ml: 1, fontSize: 30 }} />
+        )}
       </Box>
-      <p>LLMへの送信用</p>
       <Box
         sx={{
           p: '2px 4px',

@@ -72,28 +72,6 @@ export const generateContent = async (context: string, inputText: string, modelN
   }
 };
 
-const trace = (inputText: string, responseText: string, traceName: string) => {
-  const langfuse = new Langfuse({
-    secretKey: process.env.LANGFUSE_SECRET_KEY,
-    publicKey: process.env.LANGFUSE_PUBLIC_KEY,
-    baseUrl: process.env.LANGFUSE_HOST,
-  });
-
-  const trace = langfuse.trace({
-    name: traceName,
-  });
-
-  trace.generation({
-    model: DEFAULT_MODEL_NAME,
-    modelParameters: {
-      temperature: TEMPERATURE,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-    },
-    input: inputText,
-    output: responseText,
-  });
-}
-
 const app = express();
 
 app.use((_req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -102,25 +80,6 @@ app.use((_req: express.Request, _res: express.Response, next: express.NextFuncti
 
 app.use(bodyParser.json());
 app.use(cors());
-
-app.post('/', async (req: express.Request, res: express.Response) => {
-  if (process.env.NODE_ENV === 'local') {
-    res.send({ message: req.body.input });
-    return;
-  }
-  const langfuse = new Langfuse({
-    secretKey: process.env.LANGFUSE_SECRET_KEY,
-    publicKey: process.env.LANGFUSE_PUBLIC_KEY,
-    baseUrl: process.env.LANGFUSE_HOST,
-  });
-  const context = await langfuse.getPrompt('ピープルマネジメント変数あり');
-  const compiledContext = await context.compile({
-    input: '新米マネージャーで、ピープルマネジメントの経験は非常に浅い'
-  })
-  const responseText = await generateContent(compiledContext, req.body.input);
-  trace(req.body.input, responseText.content, 'sample-llm');
-  res.send({ message: responseText })
-});
 
 app.post('/management', async (req: express.Request, res: express.Response) => {
   const { responseText } = await managementUsecase({ 
@@ -376,11 +335,6 @@ const evaluate = async (input: { langfuse: Langfuse, promptName: string, userInp
   const evaluateResult = (await generateContent('', compiledPrompt, DEFAULT_MODEL_NAME)).content.replace(/(json|text|`)/g, '');
   return JSON.parse(evaluateResult);
 }
-
-app.post('/sample-trace', async (req: express.Request, res: express.Response) => {
-  trace(req.body.input, req.body.output, 'sample-trace');
-  res.send({ message: 'success' });
-});
 
 app.listen(process.env.PORT, () => {
   console.log(`Server is running at http://localhost:${process.env.PORT}`);
